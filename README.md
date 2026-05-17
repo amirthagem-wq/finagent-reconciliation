@@ -70,53 +70,36 @@ finagent-reconciliation/
 | Styling    | Inline CSS (CSS custom properties, Grid, Flexbox) |
 | Logic      | Vanilla JavaScript |
 | Fonts      | [IBM Plex Mono + IBM Plex Sans](https://fonts.google.com/specimen/IBM+Plex+Mono) via Google Fonts |
-| AI Backend | Anthropic Claude API (`/v1/messages`) |
+| Data | Synthetic dataset (built-in JavaScript) |
 
 ---
 
-## 🔑 API Configuration
+## 🏗 How It Works
 
-FinAgent calls the **Anthropic Claude API** to power the reconciliation agent. To connect your own key:
-
-1. Create a free account at [console.anthropic.com](https://console.anthropic.com)
-2. Generate an API key under **API Keys**
-3. In `index.html`, locate the configuration block near the top of the `<script>` section:
-
-```js
-const CONFIG = {
-  apiKey: "YOUR_ANTHROPIC_API_KEY",   // ← replace this
-  model: "claude-sonnet-4-20250514",
-};
-```
-
-> ⚠️ **Never commit a real API key to a public repository.** Use environment variables or a backend proxy for production deployments.
-
----
-
-## 🏗 Architecture
+FinAgent is a fully self-contained front-end simulation — no backend, no external API calls, no credentials required.
 
 ```
 User Prompt
     │
     ▼
-Claude AI Agent  ←──── System prompt with reconciliation rules
+JavaScript Agent Engine
     │
-    ├── Analyse source vs. target data
-    ├── Identify discrepancies
-    ├── Log reasoning steps
-    └── Return structured resolution advice
-         │
-         ▼
-    Dashboard UI (tables, log, status panels)
+    ├── Matches prompt against built-in rule set
+    ├── Cross-references synthetic source vs. target records
+    ├── Flags discrepancies by severity (critical / warning / info)
+    ├── Streams timestamped reasoning steps to the agent log
+    └── Updates dashboard UI (tables, status panels, metrics)
 ```
+
+All financial data is synthetic and generated entirely in the browser. Nothing is stored or transmitted externally.
 
 ---
 
-## 🔒 Security Notes
+## 🔒 Data & Privacy
 
-- This project is a **frontend prototype / demo**. In a real-world deployment, API calls should be proxied through a secure backend to avoid exposing credentials.
-- No financial data is stored or transmitted beyond the current browser session.
-- All sample data is synthetic and not representative of any real entity.
+- No external API calls are made
+- No financial data is stored or transmitted beyond the current browser session
+- All sample data is synthetic and not representative of any real entity
 
 ---
 
