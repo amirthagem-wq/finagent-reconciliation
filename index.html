@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinAgent — AI Reconciliation Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #0f1520;
+    --surface2: #141c2e;
+    --surface3: #1a2440;
+    --border: #1e2d4a;
+    --border2: #253860;
+    --accent: #00c2ff;
+    --accent2: #0070d4;
+    --green: #00e5a0;
+    --yellow: #ffd166;
+    --red: #ff4d6a;
+    --purple: #9d7fe3;
+    --text: #c8d8f0;
+    --text-dim: #5a7090;
+    --text-bright: #e8f0ff;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .logo-dot {
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .header-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex; gap: 24px;
+  }
+
+  .header-meta span { color: var(--text); }
+
+  /* Main layout */
+  .main {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 0;
+    height: calc(100vh - 53px);
+  }
+
+  /* Sidebar */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.12em;
+    background: var(--surface);
+  }
+
+  /* Agent Panel */
+  .agent-panel {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .agent-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  .agent-input-wrap {
+    position: relative;
+  }
+
+  .agent-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: var(--text-bright);
+    font-family: var(--mono);
+    font-size: 12px;
+    resize: none;
+    outline: none;
+    transition: border-color 0.2s;
+    line-height: 1.5;
+  }
+
+  .agent-input:focus { border-color: var(--accent); }
+
+  .run-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px;
+    background: var(--accent);
+    color: #000;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .run-btn:hover { background: #33cfff; }
+  .run-btn:disabled { background: var(--border2); color: var(--text-dim); cursor: not-allowed; }
+
+  /* Agent Log */
+  .agent-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 20px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .log-entry {
+    margin-bottom: 6px;
+    opacity: 0;
+    animation: fadeIn 0.3s forwards;
+  }
+
+  @keyframes fadeIn {
+    to { opacity: 1; }
+  }
+
+  .log-entry .ts { color: var(--text-dim); }
+  .log-entry .sys { color: var(--accent2); }
+  .log-entry .ok { color: var(--green); }
+  .log-entry .warn { color: var(--yellow); }
+  .log-entry .err { color: var(--red); }
+  .log-entry .info { color: var(--text); }
+  .log-entry .agent { color: var(--purple); }
+
+  /* Data Sources */
+  .sources-grid {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .source-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 8px 10px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 9px;
+  }
+
+  .source-chip .s-name { color: var(--text-dim); display: block; margin-bottom: 3px; }
+  .source-chip .s-count { color: var(--text-bright); font-size: 16px; font-weight: 600; }
+  .source-chip.active { border-color: var(--accent); }
+  .source-chip.active .s-name { color: var(--accent); }
+
+  /* Main content */
+  .content {
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 0 20px;
+  }
+
+  .tab {
+    padding: 14px 18px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Stats bar */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .stat {
+    padding: 14px 20px;
+    border-right: 1px solid var(--border);
+  }
+
+  .stat:last-child { border-right: none; }
+  .stat-label { font-family: var(--mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 5px; }
+  .stat-value { font-family: var(--mono); font-size: 22px; font-weight: 600; color: var(--text-bright); }
+  .stat-value.green { color: var(--green); }
+  .stat-value.yellow { color: var(--yellow); }
+  .stat-value.red { color: var(--red); }
+  .stat-sub { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+  /* Table area */
+  .table-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  thead tr {
+    background: var(--surface);
+    position: sticky; top: 0; z-index: 10;
+  }
+
+  th {
+    padding: 10px 16px;
+    text-align: left;
+    color: var(--text-dim);
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    font-size: 9px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    color: var(--text);
+  }
+
+  tr:hover td { background: rgba(0,194,255,0.03); }
+
+  tr.flagged td { background: rgba(255,77,106,0.04); }
+  tr.flagged:hover td { background: rgba(255,77,106,0.07); }
+  tr.matched td { }
+  tr.voided td { background: rgba(255,209,102,0.04); }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .badge.matched { background: rgba(0,229,160,0.12); color: var(--green); border: 1px solid rgba(0,229,160,0.2); }
+  .badge.flagged { background: rgba(255,77,106,0.12); color: var(--red); border: 1px solid rgba(255,77,106,0.2); }
+  .badge.pending { background: rgba(255,209,102,0.12); color: var(--yellow); border: 1px solid rgba(255,209,102,0.2); }
+  .badge.voided  { background: rgba(90,112,144,0.15); color: var(--text-dim); border: 1px solid var(--border); }
+
+  .amount { font-weight: 500; }
+  .amount.credit { color: var(--green); }
+  .amount.debit  { color: var(--text-bright); }
+
+  .source-tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 9px;
+    background: var(--surface3);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+
+  .delta { font-size: 10px; }
+  .delta.ok { color: var(--green); }
+  .delta.bad { color: var(--red); }
+
+  /* Action suggestions */
+  .actions-panel {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+    background: var(--surface);
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  }
+
+  .action-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    flex-shrink: 0;
+  }
+
+  .action-btn {
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text);
+    letter-spacing: 0.05em;
+  }
+
+  .action-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,194,255,0.06); }
+  .action-btn.primary { border-color: var(--accent); color: var(--accent); }
+
+  /* Before/After panel */
+  .before-after {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .ba-side {
+    padding: 28px;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+  }
+
+  .ba-side:last-child { border-right: none; }
+
+  .ba-header {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ba-header.before { color: var(--red); }
+  .ba-header.after  { color: var(--green); }
+
+  .ba-step {
+    display: flex; gap: 14px;
+    margin-bottom: 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.5;
+    opacity: 0;
+    animation: fadeIn 0.4s forwards;
+  }
+
+  .ba-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .before .ba-num { background: rgba(255,77,106,0.15); color: var(--red); border: 1px solid rgba(255,77,106,0.3); }
+  .after  .ba-num { background: rgba(0,229,160,0.12); color: var(--green); border: 1px solid rgba(0,229,160,0.2); }
+
+  .ba-text { color: var(--text); }
+
+  .ba-metric {
+    margin-top: 24px;
+    padding: 16px;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .before .ba-metric { background: rgba(255,77,106,0.07); border: 1px solid rgba(255,77,106,0.15); }
+  .after  .ba-metric { background: rgba(0,229,160,0.06); border: 1px solid rgba(0,229,160,0.12); }
+
+  .ba-metric .m-row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .ba-metric .m-row:last-child { border-bottom: none; }
+  .ba-metric .m-key { color: var(--text-dim); }
+  .before .ba-metric .m-val { color: var(--red); }
+  .after  .ba-metric .m-val { color: var(--green); }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--surface3);
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--accent);
+    padding: 12px 18px;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    max-width: 320px;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 999;
+  }
+
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* Hidden tabs */
+  .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .tab-content.active { display: flex; }
+
+  /* Cursor blink */
+  .cursor::after {
+    content: '█';
+    color: var(--accent);
+    animation: blink 1s infinite;
+    font-size: 10px;
+  }
+
+  @keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .filter-row {
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .filter-btn {
+    padding: 4px 12px;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 9px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .filter-btn:hover, .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,194,255,0.06); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    FINAGENT · AI RECONCILIATION ENGINE
+  </div>
+  <div class="header-meta">
+    <div>ENTITY: <span>STANDARD BANK PTE LTD</span></div>
+    <div>PERIOD: <span>FEB 2026</span></div>
+    <div>SYSTEMS: <span>3 CONNECTED</span></div>
+    <div id="clock">--:--:--</div>
+  </div>
+</header>
+
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">◈ AGENT CONSOLE</div>
+
+    <div class="agent-panel">
+      <div class="agent-label">▸ INSTRUCTION</div>
+      <textarea class="agent-input" id="agentInstruction" rows="3">Reconcile all outstanding invoices against Core Banking, Payment Gateway, and Trade Finance. Flag any that should have been voided.</textarea>
+      <button class="run-btn" id="runBtn" onclick="runAgent()">⚡ RUN AGENT</button>
+    </div>
+
+    <div class="agent-log" id="agentLog">
+      <div style="color: var(--text-dim); font-size: 10px; font-family: var(--mono);">
+        > Agent idle. Issue instruction to begin reconciliation.
+      </div>
+    </div>
+
+    <div class="sources-grid" id="sourcesGrid">
+      <div class="source-chip" id="chip-cbs">
+        <span class="s-name">CORE BANKING</span>
+        <span class="s-count">—</span>
+      </div>
+      <div class="source-chip" id="chip-pgw">
+        <span class="s-name">PAYMENT GW</span>
+        <span class="s-count">—</span>
+      </div>
+      <div class="source-chip" id="chip-trf">
+        <span class="s-name">TRADE FIN</span>
+        <span class="s-count">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="content">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('reconciliation', this)">RECONCILIATION REPORT</div>
+      <div class="tab" onclick="switchTab('before-after', this)">BEFORE vs AFTER</div>
+      <div class="tab" onclick="switchTab('raw-data', this)">RAW DATA</div>
+    </div>
+
+    <!-- Reconciliation Tab -->
+    <div class="tab-content active" id="tab-reconciliation">
+      <div class="stats-bar">
+        <div class="stat">
+          <div class="stat-label">TOTAL INVOICES</div>
+          <div class="stat-value" id="s-total">18</div>
+          <div class="stat-sub">ACROSS 3 SYSTEMS</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">MATCHED</div>
+          <div class="stat-value green" id="s-matched">—</div>
+          <div class="stat-sub">RECONCILED</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">FLAGGED</div>
+          <div class="stat-value red" id="s-flagged">—</div>
+          <div class="stat-sub">NEEDS REVIEW</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">DISCREPANCY</div>
+          <div class="stat-value yellow" id="s-discrepancy">—</div>
+          <div class="stat-sub">TOTAL DELTA</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">TIME SAVED</div>
+          <div class="stat-value green" id="s-time">—</div>
+          <div class="stat-sub">VS MANUAL (6H)</div>
+        </div>
+      </div>
+
+      <div class="filter-row">
+        <span style="font-family: var(--mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; margin-right: 4px;">FILTER:</span>
+        <button class="filter-btn active" onclick="filterTable('all', this)">ALL</button>
+        <button class="filter-btn" onclick="filterTable('matched', this)">MATCHED</button>
+        <button class="filter-btn" onclick="filterTable('flagged', this)">FLAGGED</button>
+        <button class="filter-btn" onclick="filterTable('pending', this)">PENDING</button>
+        <button class="filter-btn" onclick="filterTable('voided', this)">VOIDED</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>INV ID</th>
+              <th>COUNTERPARTY</th>
+              <th>SOURCE</th>
+              <th>INVOICE AMT</th>
+              <th>SETTLED AMT</th>
+              <th>DELTA</th>
+              <th>DUE DATE</th>
+              <th>STATUS</th>
+              <th>AGENT NOTE</th>
+            </tr>
+          </thead>
+          <tbody id="reconTable">
+            <tr>
+              <td colspan="9" style="text-align:center; color: var(--text-dim); padding: 40px; font-family: var(--mono); font-size: 11px;">
+                Run agent to load reconciliation data
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="actions-panel" id="actionsPanel" style="display:none">
+        <span class="action-label">▸ AGENT SUGGESTS:</span>
+        <button class="action-btn primary" onclick="showToast('Preparing Excel export with flagged items...')">📊 Export Flagged to Excel</button>
+        <button class="action-btn" onclick="showToast('Drafting notification emails for 3 counterparties...')">✉ Email Counterparties</button>
+        <button class="action-btn" onclick="showToast('Generating audit trail PDF...')">📄 Audit Report</button>
+        <button class="action-btn" onclick="showToast('Void instructions prepared for compliance review.')">🚫 Prepare Void Instructions</button>
+      </div>
+    </div>
+
+    <!-- Before/After Tab -->
+    <div class="tab-content" id="tab-before-after">
+      <div class="before-after">
+        <div class="ba-side before">
+          <div class="ba-header before">◈ BEFORE: MANUAL PROCESS</div>
+          <div id="ba-before-steps"></div>
+          <div class="ba-metric" style="margin-top:24px">
+            <div class="m-row"><span class="m-key">Total Time</span><span class="m-val">6+ hours</span></div>
+            <div class="m-row"><span class="m-key">Staff Required</span><span class="m-val">2 analysts</span></div>
+            <div class="m-row"><span class="m-key">Error Rate</span><span class="m-val">~8–12%</span></div>
+            <div class="m-row"><span class="m-key">Audit Trail</span><span class="m-val">Inconsistent</span></div>
+            <div class="m-row"><span class="m-key">Delegation</span><span class="m-val">Requires training</span></div>
+            <div class="m-row"><span class="m-key">Scalability</span><span class="m-val">Linear cost</span></div>
+          </div>
+        </div>
+        <div class="ba-side after">
+          <div class="ba-header after">◈ AFTER: AGENT PROCESS</div>
+          <div id="ba-after-steps"></div>
+          <div class="ba-metric">
+            <div class="m-row"><span class="m-key">Total Time</span><span class="m-val">~4 minutes</span></div>
+            <div class="m-row"><span class="m-key">Staff Required</span><span class="m-val">0 (1 oversight)</span></div>
+            <div class="m-row"><span class="m-key">Error Rate</span><span class="m-val">&lt;1% (API-exact)</span></div>
+            <div class="m-row"><span class="m-key">Audit Trail</span><span class="m-val">Full log, timestamped</span></div>
+            <div class="m-row"><span class="m-key">Delegation</span><span class="m-val">One sentence</span></div>
+            <div class="m-row"><span class="m-key">Scalability</span><span class="m-val">Zero marginal cost</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Raw Data Tab -->
+    <div class="tab-content" id="tab-raw-data">
+      <div class="stats-bar" style="grid-template-columns: repeat(3,1fr)">
+        <div class="stat"><div class="stat-label">CORE BANKING SYSTEM</div><div class="stat-value" style="font-size:14px; color:var(--accent)">CBS · 8 RECORDS</div><div class="stat-sub">FINACLE LEDGER v12</div></div>
+        <div class="stat"><div class="stat-label">PAYMENT GATEWAY</div><div class="stat-value" style="font-size:14px; color:var(--accent)">PGW · 6 RECORDS</div><div class="stat-sub">SWIFT + FAST</div></div>
+        <div class="stat"><div class="stat-label">TRADE FINANCE</div><div class="stat-value" style="font-size:14px; color:var(--accent)">TRF · 4 RECORDS</div><div class="stat-sub">LC / BG MODULE</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>RECORD ID</th>
+              <th>SYSTEM</th>
+              <th>COUNTERPARTY</th>
+              <th>TYPE</th>
+              <th>AMOUNT (SGD)</th>
+              <th>REFERENCE</th>
+              <th>DATE</th>
+              <th>STATUS IN SYSTEM</th>
+            </tr>
+          </thead>
+          <tbody id="rawTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── SYNTHETIC DATA ───────────────────────────────────────────────
+const rawData = [
+  // Core Banking System
+  { id:'CBS-2026-0091', sys:'CORE BANKING', cp:'Meridian Trade Corp', type:'INVOICE', amt:142500, ref:'MT-INV-8812', date:'2026-01-10', sysStatus:'OUTSTANDING' },
+  { id:'CBS-2026-0092', sys:'CORE BANKING', cp:'Apex Logistics Ltd', type:'INVOICE', amt:38200, ref:'AL-8830', date:'2026-01-15', sysStatus:'PARTIAL' },
+  { id:'CBS-2026-0093', sys:'CORE BANKING', cp:'NovaTech Systems', type:'INVOICE', amt:95000, ref:'NT-Q4-221', date:'2025-12-20', sysStatus:'OUTSTANDING' },
+  { id:'CBS-2026-0094', sys:'CORE BANKING', cp:'Sunrise Commodities', type:'PAYMENT', amt:67800, ref:'SC-PAY-4401', date:'2026-02-01', sysStatus:'SETTLED' },
+  { id:'CBS-2026-0095', sys:'CORE BANKING', cp:'BlueWave Capital', type:'INVOICE', amt:210000, ref:'BW-2026-01', date:'2026-01-28', sysStatus:'OVERDUE' },
+  { id:'CBS-2026-0096', sys:'CORE BANKING', cp:'Pinnacle Energy', type:'INVOICE', amt:54300, ref:'PE-INV-009', date:'2026-02-05', sysStatus:'OUTSTANDING' },
+  { id:'CBS-2026-0097', sys:'CORE BANKING', cp:'Global Freight Co', type:'CREDIT NOTE', amt:12000, ref:'GF-CN-221', date:'2026-01-22', sysStatus:'VOIDED' },
+  { id:'CBS-2026-0098', sys:'CORE BANKING', cp:'Titan Manufacturing', type:'INVOICE', amt:318750, ref:'TM-2026-003', date:'2026-01-30', sysStatus:'OUTSTANDING' },
+
+  // Payment Gateway
+  { id:'PGW-2026-8812', sys:'PAYMENT GATEWAY', cp:'Meridian Trade Corp', type:'SETTLEMENT', amt:142500, ref:'MT-INV-8812', date:'2026-01-18', sysStatus:'COMPLETED' },
+  { id:'PGW-2026-8830A', sys:'PAYMENT GATEWAY', cp:'Apex Logistics Ltd', type:'PARTIAL PAYMENT', amt:20000, ref:'AL-8830', date:'2026-01-20', sysStatus:'COMPLETED' },
+  { id:'PGW-2026-4401', sys:'PAYMENT GATEWAY', cp:'Sunrise Commodities', type:'SETTLEMENT', amt:67800, ref:'SC-PAY-4401', date:'2026-02-01', sysStatus:'COMPLETED' },
+  { id:'PGW-2026-0095A', sys:'PAYMENT GATEWAY', cp:'BlueWave Capital', type:'PAYMENT', amt:185000, ref:'BW-2026-01', date:'2026-02-10', sysStatus:'COMPLETED' },
+  { id:'PGW-2026-PE009', sys:'PAYMENT GATEWAY', cp:'Pinnacle Energy', type:'SETTLEMENT', amt:54300, ref:'PE-INV-009', date:'2026-02-12', sysStatus:'COMPLETED' },
+  { id:'PGW-2026-GF221', sys:'PAYMENT GATEWAY', cp:'Global Freight Co', type:'REFUND', amt:12000, ref:'GF-CN-221', date:'2026-01-25', sysStatus:'COMPLETED' },
+
+  // Trade Finance
+  { id:'TRF-2026-NT221', sys:'TRADE FINANCE', cp:'NovaTech Systems', type:'LC DRAWDOWN', amt:95000, ref:'LC-NT-2026-01', date:'2026-01-05', sysStatus:'DRAWN' },
+  { id:'TRF-2026-TM003', sys:'TRADE FINANCE', cp:'Titan Manufacturing', type:'BG CLAIM', amt:318750, ref:'BG-TM-2026-03', date:'2026-01-30', sysStatus:'PENDING' },
+  { id:'TRF-2026-BW01', sys:'TRADE FINANCE', cp:'BlueWave Capital', type:'LC AMENDMENT', amt:210000, ref:'LC-BW-2026-01', date:'2026-01-15', sysStatus:'AMENDED' },
+  { id:'TRF-2026-MS01', sys:'TRADE FINANCE', cp:'Marshan Steel Pte', type:'INVOICE', amt:88600, ref:'MS-INV-2026-01', date:'2026-01-08', sysStatus:'OUTSTANDING' },
+];
+
+const reconciliationData = [
+  { id:'CBS-2026-0091', cp:'Meridian Trade Corp', source:'CORE BANKING', invAmt:142500, settledAmt:142500, delta:0, due:'2026-01-31', status:'matched', note:'Full settlement via PGW on 18-Jan' },
+  { id:'CBS-2026-0092', cp:'Apex Logistics Ltd', source:'CORE BANKING', invAmt:38200, settledAmt:20000, delta:-18200, due:'2026-02-01', status:'flagged', note:'Partial payment only. SGD 18,200 outstanding. Counterparty dispute logged.' },
+  { id:'CBS-2026-0093', cp:'NovaTech Systems', source:'CORE BANKING', invAmt:95000, settledAmt:95000, delta:0, due:'2026-01-25', status:'matched', note:'Settled via LC drawdown TRF-2026-NT221. Cross-system match confirmed.' },
+  { id:'CBS-2026-0094', cp:'Sunrise Commodities', source:'CORE BANKING', invAmt:67800, settledAmt:67800, delta:0, due:'2026-02-05', status:'matched', note:'Payment and settlement records align across CBS and PGW.' },
+  { id:'CBS-2026-0095', cp:'BlueWave Capital', source:'CORE BANKING', invAmt:210000, settledAmt:185000, delta:-25000, due:'2026-01-28', status:'flagged', note:'SGD 25,000 discrepancy. LC amendment on TRF shows revised amount. Should have been voided or re-issued.' },
+  { id:'CBS-2026-0096', cp:'Pinnacle Energy', source:'CORE BANKING', invAmt:54300, settledAmt:54300, delta:0, due:'2026-02-15', status:'matched', note:'Full settlement confirmed. No discrepancy.' },
+  { id:'CBS-2026-0097', cp:'Global Freight Co', source:'CORE BANKING', invAmt:12000, settledAmt:12000, delta:0, due:'2026-01-31', status:'voided', note:'Credit note and refund confirmed. Correctly voided in CBS.' },
+  { id:'CBS-2026-0098', cp:'Titan Manufacturing', source:'CORE BANKING', invAmt:318750, settledAmt:0, delta:-318750, due:'2026-01-30', status:'flagged', note:'BG claim pending on TRF. CBS shows OUTSTANDING — no payment received. HIGH PRIORITY.' },
+  { id:'TRF-2026-MS01', cp:'Marshan Steel Pte', source:'TRADE FINANCE', invAmt:88600, settledAmt:0, delta:-88600, due:'2026-02-10', status:'pending', note:'No corresponding record in CBS or PGW. Invoice may have been issued outside main system.' },
+];
+
+// ─── BEFORE/AFTER DATA ────────────────────────────────────────────
+const beforeSteps = [
+  'Log into Core Banking System (CBS)',
+  'Manually export invoice ledger to Excel',
+  'Log into Payment Gateway portal',
+  'Download settlement reports (CSV)',
+  'Log into Trade Finance module',
+  'Export LC/BG drawdown records',
+  'Open all 3 spreadsheets side-by-side',
+  'Manually cross-reference 18 line items',
+  'Identify discrepancies row by row',
+  'Escalate flagged items to team lead',
+  'Reformat output for management report',
+  'Email report for sign-off',
+];
+
+const afterSteps = [
+  '"Reconcile outstanding invoices against Core Banking, Payment Gateway, and Trade Finance. Flag voided items."',
+  '→ Agent queries CBS API (18 records pulled)',
+  '→ Agent queries PGW API (6 settlement records)',
+  '→ Agent queries Trade Finance API (4 LC/BG records)',
+  '→ Agent asks 1 clarifying question (Apex Logistics dispute)',
+  '→ Cross-references all 18 records in memory',
+  '→ Produces clean reconciliation with audit trail',
+  '→ Flags 3 discrepancies with explanations',
+  '→ Prepares action options for human review',
+];
+
+// ─── CLOCK ─────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toTimeString().slice(0, 8) + ' SGT';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── TABS ──────────────────────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+
+  if (name === 'before-after') renderBeforeAfter();
+  if (name === 'raw-data') renderRawTable();
+}
+
+// ─── AGENT LOG ─────────────────────────────────────────────────────
+let logDelay = 0;
+
+function addLog(type, text, delay) {
+  logDelay += delay || 300;
+  setTimeout(() => {
+    const log = document.getElementById('agentLog');
+    const now = new Date().toTimeString().slice(0,8);
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML = `<span class="ts">[${now}]</span> <span class="${type}">${text}</span>`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+  }, logDelay);
+}
+
+// ─── AGENT RUNNER ──────────────────────────────────────────────────
+function runAgent() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>RUNNING...';
+  logDelay = 0;
+
+  const log = document.getElementById('agentLog');
+  log.innerHTML = '';
+
+  addLog('agent', '▸ Agent initialising...', 0);
+  addLog('sys', 'Parsing instruction...', 400);
+  addLog('info', 'Identified 3 target systems: CBS, PGW, TRF', 500);
+
+  addLog('sys', '⟶ Querying Core Banking System (CBS)...', 700);
+  setTimeout(() => { document.getElementById('chip-cbs').classList.add('active'); }, logDelay + 800);
+  addLog('ok', '✓ CBS: 8 invoice records retrieved', 900);
+
+  addLog('sys', '⟶ Querying Payment Gateway (PGW)...', 500);
+  setTimeout(() => { document.getElementById('chip-pgw').classList.add('active'); }, logDelay + 400);
+  addLog('ok', '✓ PGW: 6 settlement records retrieved', 600);
+
+  addLog('sys', '⟶ Querying Trade Finance module (TRF)...', 500);
+  setTimeout(() => { document.getElementById('chip-trf').classList.add('active'); }, logDelay + 400);
+  addLog('ok', '✓ TRF: 4 LC/BG records retrieved', 600);
+
+  addLog('agent', 'Cross-referencing 18 records across 3 APIs...', 800);
+  addLog('info', 'Matching by reference number and counterparty...', 600);
+
+  addLog('ok', '✓ MATCH: CBS-0091 ↔ PGW-8812 (Meridian Trade Corp) SGD 142,500', 500);
+  addLog('ok', '✓ MATCH: CBS-0093 ↔ TRF-NT221 (NovaTech) SGD 95,000 via LC', 400);
+  addLog('ok', '✓ MATCH: CBS-0094 ↔ PGW-4401 (Sunrise Commodities) SGD 67,800', 400);
+  addLog('ok', '✓ MATCH: CBS-0096 ↔ PGW-PE009 (Pinnacle Energy) SGD 54,300', 400);
+  addLog('ok', '✓ MATCH: CBS-0097 ↔ PGW-GF221 (Global Freight) — VOIDED, confirmed', 400);
+
+  addLog('warn', '⚠ FLAG: CBS-0092 — Apex Logistics partial only. Delta: SGD 18,200', 600);
+  addLog('warn', '⚠ FLAG: CBS-0095 — BlueWave LC amended. Delta: SGD 25,000. Should void?', 600);
+  addLog('err', '✗ FLAG: CBS-0098 — Titan Manufacturing BG claim pending. SGD 318,750 unrecovered. HIGH RISK', 700);
+  addLog('warn', '⚠ ORPHAN: TRF-MS01 — Marshan Steel. No CBS/PGW record. Possible off-system invoice.', 600);
+
+  addLog('agent', 'Reconciliation complete. Preparing report...', 800);
+
+  const totalDelay = logDelay + 900;
+
+  setTimeout(() => {
+    renderStats();
+    renderReconTable();
+    document.getElementById('actionsPanel').style.display = 'flex';
+    document.getElementById('s-time').textContent = '5m 42s';
+    btn.disabled = false;
+    btn.innerHTML = '⚡ RUN AGENT';
+    addLog('ok', '▸ Report ready. 3 items require action.', 0);
+    document.getElementById('chip-cbs').querySelector('.s-count').textContent = '8';
+    document.getElementById('chip-pgw').querySelector('.s-count').textContent = '6';
+    document.getElementById('chip-trf').querySelector('.s-count').textContent = '4';
+  }, totalDelay);
+}
+
+// ─── STATS ────────────────────────────────────────────────────────
+function renderStats() {
+  const matched = reconciliationData.filter(r => r.status === 'matched' || r.status === 'voided').length;
+  const flagged = reconciliationData.filter(r => r.status === 'flagged').length;
+  const discrepancy = reconciliationData.reduce((s, r) => s + Math.abs(r.delta), 0);
+
+  document.getElementById('s-total').textContent = reconciliationData.length;
+  document.getElementById('s-matched').textContent = matched;
+  document.getElementById('s-flagged').textContent = flagged;
+  document.getElementById('s-discrepancy').textContent = 'SGD ' + discrepancy.toLocaleString();
+}
+
+// ─── RECON TABLE ──────────────────────────────────────────────────
+let currentFilter = 'all';
+
+function filterTable(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderReconTable();
+}
+
+function renderReconTable() {
+  const tbody = document.getElementById('reconTable');
+  const data = currentFilter === 'all' ? reconciliationData
+    : reconciliationData.filter(r => r.status === currentFilter);
+
+  tbody.innerHTML = data.map(r => {
+    const deltaStr = r.delta === 0 ? '<span class="delta ok">✓ 0</span>'
+      : `<span class="delta bad">▼ ${r.delta.toLocaleString()}</span>`;
+    const amtClass = r.settledAmt > 0 ? 'credit' : 'debit';
+    let badgeClass = r.status;
+    let badgeText = r.status.toUpperCase();
+
+    return `<tr class="${r.status}">
+      <td style="font-family:var(--mono);color:var(--accent2)">${r.id}</td>
+      <td style="font-weight:500;color:var(--text-bright)">${r.cp}</td>
+      <td><span class="source-tag">${r.source}</span></td>
+      <td class="amount debit">SGD ${r.invAmt.toLocaleString()}</td>
+      <td class="amount ${amtClass}">SGD ${r.settledAmt.toLocaleString()}</td>
+      <td>${deltaStr}</td>
+      <td style="color:var(--text-dim)">${r.due}</td>
+      <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+      <td style="color:var(--text-dim);max-width:220px;font-size:10px">${r.note}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── RAW TABLE ────────────────────────────────────────────────────
+function renderRawTable() {
+  const tbody = document.getElementById('rawTable');
+  tbody.innerHTML = rawData.map(r => `
+    <tr>
+      <td style="font-family:var(--mono);color:var(--accent2);font-size:10px">${r.id}</td>
+      <td><span class="source-tag">${r.sys}</span></td>
+      <td style="color:var(--text-bright)">${r.cp}</td>
+      <td style="color:var(--text-dim)">${r.type}</td>
+      <td class="amount debit">SGD ${r.amt.toLocaleString()}</td>
+      <td style="color:var(--text-dim);font-size:10px">${r.ref}</td>
+      <td style="color:var(--text-dim)">${r.date}</td>
+      <td style="color:${r.sysStatus==='COMPLETED'||r.sysStatus==='SETTLED'?'var(--green)':r.sysStatus==='OUTSTANDING'||r.sysStatus==='PENDING'?'var(--yellow)':'var(--text-dim)'}; font-family:var(--mono);font-size:10px">${r.sysStatus}</td>
+    </tr>`).join('');
+}
+
+// ─── BEFORE/AFTER ────────────────────────────────────────────────
+function renderBeforeAfter() {
+  const bc = document.getElementById('ba-before-steps');
+  const ac = document.getElementById('ba-after-steps');
+
+  bc.innerHTML = beforeSteps.map((s, i) => `
+    <div class="ba-step before" style="animation-delay:${i*80}ms">
+      <div class="ba-num">${i+1}</div>
+      <div class="ba-text">${s}</div>
+    </div>`).join('');
+
+  ac.innerHTML = afterSteps.map((s, i) => `
+    <div class="ba-step after" style="animation-delay:${i*100}ms">
+      <div class="ba-num">${i+1}</div>
+      <div class="ba-text">${s}</div>
+    </div>`).join('');
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = '▸ ' + msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// Init raw table
+renderRawTable();
+</script>
+</body>
+</html>
